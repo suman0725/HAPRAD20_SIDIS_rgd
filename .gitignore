@@ -1,10 +1,22 @@
-**/.vscode
-**/.obj
-**/.dep
-**/.dict
-**/slib
-**/bin
-**.csv
-**.txt
-**.png
-fit-results*
+# Compiled objects and libraries
+*.o
+*.so
+*.a
+*.d
+
+# Executables and binaries
+bin/
+haprad2
+
+# EG2-specific output results (not RGD)
+RCFactor_*.txt
+centroids_*.csv
+PhiPQ_*.png
+
+# Build artifacts
+Makefile_depends
+*.pcm
+*.rdict.pcm
+
+# Fortran compiled objects
+*.mod
