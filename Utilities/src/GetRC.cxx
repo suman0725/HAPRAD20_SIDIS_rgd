@@ -2,10 +2,16 @@
 /*  GetRC.cxx                            */
 /*                                       */
 /*  Andrés Bórquez                       */
-/*                                       */
+/*  RGD adaptation: Suman Shrestha       */
 /*****************************************/
 
-// October 2021
+// October 2021 (original EG2)
+// RGD adaptation: April 2026
+//   - Beam energy:  5.015 GeV (EG2) -> 10.6 GeV (RGD)
+//   - Targets: C, Cu, Sn (RGD solid foils) + D (LD2 reference)
+//   - NAZ (Z/A):
+//       EG2: Pb=82/208=0.394, others default 0.5 (C, Fe)
+//       RGD: Cu=29/64=0.4531, Sn=50/120=0.4167, C=0.5, D=0.5
 
 #include "Headers.hxx"
 #include "UX.hxx"
@@ -19,9 +25,20 @@ int main(int argc, char **argv) {
   parseCommandLine(argc, argv);
   printOptions();
 
-  Double_t NAZ = 0.5;
-  if (gTargetOption == "Pb") {
-    NAZ = 82. / 208.;
+  // -------------------------------------------------------
+  // Z/A ratio for each target nucleus
+  //
+  // EG2 original:
+  //   Double_t NAZ = 0.5;
+  //   if (gTargetOption == "Pb") { NAZ = 82. / 208.; }
+  //
+  // RGD: added Cu and Sn; C and D keep default 0.5
+  // -------------------------------------------------------
+  Double_t NAZ = 0.5;  // default: C (6/12) and D (1/2)
+  if (gTargetOption == "Cu" || gTargetOption == "D_Cu") {
+    NAZ = 29. / 64.;   // Cu: Z=29, A=63.546 ~ 64
+  } else if (gTargetOption == "Sn" || gTargetOption == "D_Sn") {
+    NAZ = 50. / 120.;  // Sn: Z=50, A=118.71 ~ 120
   }
 
   /*** READ CSV FILE ***/
@@ -35,7 +52,6 @@ int main(int argc, char **argv) {
   std::ifstream CentroidsFile;
   CentroidsFile.open("centroids_" + gTargetOption + ".csv", std::ios::in);
 
-  // exit program if ifstream could not open file
   if (!CentroidsFile) {
     std::cerr << "ERROR: File could not be opened" << std::endl;
     exit(EXIT_FAILURE);
@@ -66,8 +82,7 @@ int main(int argc, char **argv) {
 
   /*** CALCULATE RC FACTORS ***/
 
-  // this "m" is necessary for the RC calculations
-  // the model is prepared for pions, that explains the kMassPion term here
+  // m^2 threshold: minimum invariant mass of undetected hadronic system
   Double_t m = TMath::Power((kMassNeutron + kMassPion), 2);
   Double_t f1, f3;
   Double_t a1, a2, a3;
@@ -78,33 +93,49 @@ int main(int argc, char **argv) {
   a2 = 0;
   a3 = a1 / a2;
 
-  // define and create output file
   std::ofstream out;
   out.open("RCFactor_" + gTargetOption + ".txt");
 
-  // write first line
-  out << std::setw(15) << std::fixed << std::setprecision(5) << "XbCentroid" << std::setw(15) << "Q2Centroid" << std::setw(15)
-      << "ZhCentroid" << std::setw(15) << "PtCentroid" << std::setw(15) << "PhiPQCentroid" << std::setw(15) << "Fact_noex" << std::setw(15)
-      << "Fact_ex" << std::endl;
+  out << std::setw(15) << std::fixed << std::setprecision(5)
+      << "XbCentroid"    << std::setw(15)
+      << "Q2Centroid"    << std::setw(15)
+      << "ZhCentroid"    << std::setw(15)
+      << "PtCentroid"    << std::setw(15)
+      << "PhiPQCentroid" << std::setw(15)
+      << "Fact_noex"     << std::setw(15)
+      << "Fact_ex"       << std::endl;
 
-  // loop over bins
   for (Int_t i = 0; i < (Int_t)phi_centroid.size(); i++) {
-    // calculate rc factors
-    rc.CalculateRCFactor(5.015, xb_centroid[i], q2_centroid[i], zh_centroid[i], pt_centroid[i], phi_centroid[i], m, NAZ);
+
+    // -------------------------------------------------------
+    // EG2 original beam energy:
+    //   rc.CalculateRCFactor(5.015, xb_centroid[i], ...)
+    //
+    // RGD beam energy = 10.6 GeV:
+    // -------------------------------------------------------
+    rc.CalculateRCFactor(10.6, xb_centroid[i], q2_centroid[i],
+                         zh_centroid[i], pt_centroid[i],
+                         phi_centroid[i], m, NAZ);
+
     f1 = rc.GetFactor1();
     f3 = rc.GetFactor3();
+
     if (TMath::IsNaN(f1) || f1 == a3) f1 = 0;
     if (TMath::IsNaN(f3) || f3 == a3) f3 = 0;
-    // if any of the centroids is zero, null the rc factor
-    Bool_t emptyBin = xb_centroid[i] == 0. || q2_centroid[i] == 0. || zh_centroid[i] == 0. || pt_centroid[i] == 0. || phi_centroid[i] == 0.;
-    if (emptyBin) {
-      f1 = 0;
-      f3 = 0;
-    }
-    // write centroids and rc factors into output file
-    out << std::setw(15) << std::fixed << std::setprecision(5) << xb_centroid[i] << std::setw(15) << q2_centroid[i] << std::setw(15)
-        << zh_centroid[i] << std::setw(15) << pt_centroid[i] << std::setw(15) << phi_centroid[i] << std::setw(15) << f1 << std::setw(15)
-        << f3 << std::endl;
+
+    Bool_t emptyBin = xb_centroid[i]  == 0. || q2_centroid[i]  == 0. ||
+                      zh_centroid[i]  == 0. || pt_centroid[i]  == 0. ||
+                      phi_centroid[i] == 0.;
+    if (emptyBin) { f1 = 0; f3 = 0; }
+
+    out << std::setw(15) << std::fixed << std::setprecision(5)
+        << xb_centroid[i]  << std::setw(15)
+        << q2_centroid[i]  << std::setw(15)
+        << zh_centroid[i]  << std::setw(15)
+        << pt_centroid[i]  << std::setw(15)
+        << phi_centroid[i] << std::setw(15)
+        << f1              << std::setw(15)
+        << f3              << std::endl;
   }
   out.close();
 
